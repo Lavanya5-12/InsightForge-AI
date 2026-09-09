@@ -1,0 +1,164 @@
+{
+  "timestamp": "2026-09-03T18:55:32.850142",
+  "fixture_path": "data\\fixtures\\insightforge_test.pdf",
+  "total_questions": 8,
+  "total_chunks": 15,
+  "faiss_vectors": 15,
+  "hit_rate": 1.0,
+  "overall_precision": 0.2,
+  "avg_top_score": 0.8857692707399399,
+  "details": [
+    {
+      "id": 1,
+      "question": "What is Artificial Intelligence?",
+      "expected_pages": [
+        1
+      ],
+      "retrieved_pages": [
+        1,
+        8,
+        5,
+        2,
+        6
+      ],
+      "source_count": 5,
+      "relevant_sources": 1,
+      "top_score": 0.8200251452638856,
+      "precision": 0.2,
+      "hit": true
+    },
+    {
+      "id": 2,
+      "question": "What are the characteristics of Artificial Intelligence?",
+      "expected_pages": [
+        1
+      ],
+      "retrieved_pages": [
+        14,
+        1,
+        2,
+        8,
+        11
+      ],
+      "source_count": 5,
+      "relevant_sources": 1,
+      "top_score": 0.8541493310596233,
+      "precision": 0.2,
+      "hit": true
+    },
+    {
+      "id": 3,
+      "question": "What are the types of Artificial Intelligence?",
+      "expected_pages": [
+        2
+      ],
+      "retrieved_pages": [
+        2,
+        1,
+        8,
+        14,
+        11
+      ],
+      "source_count": 5,
+      "relevant_sources": 1,
+      "top_score": 0.8905395436679442,
+      "precision": 0.2,
+      "hit": true
+    },
+    {
+      "id": 4,
+      "question": "What is the history of Artificial Intelligence?",
+      "expected_pages": [
+        5
+      ],
+      "retrieved_pages": [
+        5,
+        1,
+        8,
+        2,
+        11
+      ],
+      "source_count": 5,
+      "relevant_sources": 1,
+      "top_score": 0.8692872747570011,
+      "precision": 0.2,
+      "hit": true
+    },
+    {
+      "id": 5,
+      "question": "What is an intelligent system?",
+      "expected_pages": [
+        6
+      ],
+      "retrieved_pages": [
+        6,
+        7,
+        1,
+        2,
+        8
+      ],
+      "source_count": 5,
+      "relevant_sources": 1,
+      "top_score": 0.9235399513928887,
+      "precision": 0.2,
+      "hit": true
+    },
+    {
+      "id": 6,
+      "question": "What are the applications of Artificial Intelligence?",
+      "expected_pages": [
+        8
+      ],
+      "retrieved_pages": [
+        8,
+        1,
+        2,
+        14,
+        10
+      ],
+      "source_count": 5,
+      "relevant_sources": 1,
+      "top_score": 0.9106964782020257,
+      "precision": 0.2,
+      "hit": true
+    },
+    {
+      "id": 7,
+      "question": "What are the current trends in Artificial Intelligence?",
+      "expected_pages": [
+        11
+      ],
+      "retrieved_pages": [
+        11,
+        2,
+        8,
+        14,
+        1
+      ],
+      "source_count": 5,
+      "relevant_sources": 1,
+      "top_score": 0.8917920344757109,
+      "precision": 0.2,
+      "hit": true
+    },
+    {
+      "id": 8,
+      "question": "What are the characteristics of problems in Artificial Intelligence?",
+      "expected_pages": [
+        14
+      ],
+      "retrieved_pages": [
+        14,
+        1,
+        2,
+        8,
+        11
+      ],
+      "source_count": 5,
+      "relevant_sources": 1,
+      "top_score": 0.92612440710044,
+      "precision": 0.2,
+      "hit": true
+    }
+  ]
+}

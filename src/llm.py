@@ -1,32 +1,28 @@
-import requests
-
-
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "llama3.2:3b"
+from src.ollama_client import default_ollama_client
+from src.config import LLM_MODEL
 
 
 def generate_answer(
     question: str,
-    context: str
+    context: str,
+    model: str = LLM_MODEL
 ) -> str:
-
+    """
+    Generate a grounded document answer using the local Ollama LLM.
+    """
     prompt = f"""
-You are InsightForge AI, a document question-answering assistant.
+You are InsightForge AI, an intelligent document question-answering assistant.
 
-Answer the user's question using ONLY the information provided
-in the context below.
+Answer the user's question using ONLY the provided document context below.
 
-IMPORTANT RULES:
-1. Do not use outside knowledge.
-2. Do not invent information.
-3. If the answer is not present in the context, say:
-   "I could not find the answer in the provided document."
-4. Give a direct, clear answer.
-5. Do not mention "SOURCE 1", "SOURCE 2", or internal retrieval
-   details in your answer.
-6. Do not mention the context or retrieval process.
-7. Answer naturally as if you already know the information
-   from the provided document.
+CRITICAL RULES:
+1. Do NOT use external or outside knowledge.
+2. Do NOT invent facts or hallucinate details.
+3. If the answer is not clearly stated in the context below, respond with:
+   "I could not find sufficient information about this question in the uploaded documents."
+4. Provide a direct, concise, and accurate answer.
+5. Do NOT mention "SOURCE 1", "SOURCE 2", or internal retrieval mechanics in your main text.
+6. Answer naturally and professionally.
 
 CONTEXT:
 {context}
@@ -37,21 +33,8 @@ USER QUESTION:
 ANSWER:
 """
 
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": MODEL_NAME,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.2
-            }
-        },
-        timeout=120
+    return default_ollama_client.generate_answer(
+        prompt=prompt,
+        model=model,
+        temperature=0.2
     )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    return data["response"].strip()

@@ -1,290 +1,141 @@
+from typing import List, Dict, Optional
 from src.embeddings import generate_embedding
-from src.vector_store import search_documents
+from src.vector_store import FAISSVectorStore, get_vector_store
 from src.sparse_retriever import BM25Retriever
+from src.config import DENSE_WEIGHT, SPARSE_WEIGHT, DEFAULT_TOP_K
 
 
 class HybridRetriever:
     """
-    Combines dense FAISS retrieval and BM25 sparse retrieval.
+    Combines dense FAISS vector retrieval and BM25 sparse keyword retrieval.
     """
 
     def __init__(
         self,
-        chunks: list[dict],
-        dense_weight: float = 0.6,
-        sparse_weight: float = 0.4
+        chunks: List[Dict],
+        vector_store: Optional[FAISSVectorStore] = None,
+        dense_weight: float = DENSE_WEIGHT,
+        sparse_weight: float = SPARSE_WEIGHT
     ):
-
         if not chunks:
-            raise ValueError(
-                "Chunks cannot be empty."
-            )
+            raise ValueError("Chunks list cannot be empty for HybridRetriever.")
 
-        if abs(
-            (dense_weight + sparse_weight) - 1.0
-        ) > 1e-6:
-
-            raise ValueError(
-                "dense_weight + sparse_weight must equal 1.0"
-            )
+        if abs((dense_weight + sparse_weight) - 1.0) > 1e-6:
+            raise ValueError("dense_weight + sparse_weight must sum to 1.0")
 
         self.chunks = chunks
-
+        self.vector_store = vector_store or get_vector_store()
         self.dense_weight = dense_weight
         self.sparse_weight = sparse_weight
+        self.bm25 = BM25Retriever(chunks)
 
-        self.bm25 = BM25Retriever(
-            chunks
-        )
+    def dense_search(self, query: str, n_results: int = DEFAULT_TOP_K) -> List[Dict]:
+        """Retrieve top chunks using dense vector embeddings in FAISS."""
+        if not query.strip():
+            return []
 
-
-    # ========================================================
-    # DENSE SEARCH
-    # ========================================================
-
-    def dense_search(
-        self,
-        query: str,
-        n_results: int = 5
-    ) -> list[dict]:
-        """
-        Retrieve documents using dense vector similarity.
-        """
-
-        query_embedding = generate_embedding(
-            query
-        )
-
-        results = search_documents(
-            query_embedding,
-            n_results=n_results
-        )
+        query_embedding = generate_embedding(query)
+        raw_results = self.vector_store.search(query_embedding, n_results=n_results)
 
         dense_results = []
-
-        for result in results:
-
-            dense_results.append(
-                {
-                    "text": result["text"],
-                    "metadata": result["metadata"],
-                    "score": result["score"]
-                }
-            )
+        for res in raw_results:
+            dense_results.append({
+                "text": res["text"],
+                "metadata": res["metadata"],
+                "score": res["score"]
+            })
 
         return dense_results
 
+    def sparse_search(self, query: str, n_results: int = DEFAULT_TOP_K) -> List[Dict]:
+        """Retrieve top chunks using BM25 sparse keyword matching."""
+        if not query.strip():
+            return []
 
-    # ========================================================
-    # SCORE NORMALIZATION
-    # ========================================================
+        return self.bm25.search(query, n_results=n_results)
 
     @staticmethod
-    def normalize_scores(
-        results: list[dict]
-    ) -> list[dict]:
+    def normalize_bm25_scores(results: List[Dict]) -> List[Dict]:
         """
-        Normalize retrieval scores to the range 0-1.
+        Normalize BM25 keyword scores to [0.0, 1.0] by dividing by max score.
+        If all BM25 scores are 0, returns 0.0 for all items.
         """
-
         if not results:
             return results
 
-        scores = [
-            result["score"]
-            for result in results
-        ]
-
-        min_score = min(scores)
+        scores = [res["score"] for res in results]
         max_score = max(scores)
 
-        if max_score == min_score:
-
-            for result in results:
-
-                result["normalized_score"] = 1.0
-
-            return results
-
-        for result in results:
-
-            result["normalized_score"] = (
-                result["score"] - min_score
-            ) / (
-                max_score - min_score
-            )
+        for res in results:
+            if max_score > 0:
+                res["normalized_score"] = res["score"] / max_score
+            else:
+                res["normalized_score"] = 0.0
 
         return results
 
-
-    # ========================================================
-    # HYBRID RETRIEVAL
-    # ========================================================
-
-    def retrieve(
-        self,
-        query: str,
-        n_results: int = 5
-    ) -> list[dict]:
+    def retrieve(self, query: str, n_results: int = DEFAULT_TOP_K) -> List[Dict]:
         """
-        Perform hybrid retrieval using:
-
-        Dense retrieval + BM25 retrieval
+        Perform hybrid retrieval combining dense FAISS search and sparse BM25 search.
+        Preserves absolute FAISS similarity semantics to enforce retrieval safety thresholds.
         """
+        if not query or not query.strip():
+            return []
 
-        # ----------------------------------------------------
-        # 1. Dense Retrieval
-        # ----------------------------------------------------
+        # 1. Dense retrieval (FAISS score is already absolute similarity 1/(1+dist) in [0.0, 1.0])
+        dense_results = self.dense_search(query, n_results=n_results)
 
-        dense_results = self.dense_search(
-            query,
-            n_results=n_results
-        )
+        # 2. Sparse retrieval (BM25 normalized by max score)
+        sparse_results = self.sparse_search(query, n_results=n_results)
+        sparse_results = self.normalize_bm25_scores(sparse_results)
 
-
-        # ----------------------------------------------------
-        # 2. Sparse Retrieval
-        # ----------------------------------------------------
-
-        sparse_results = self.bm25.search(
-            query,
-            n_results=n_results
-        )
-
-
-        # ----------------------------------------------------
-        # 3. Normalize Scores
-        # ----------------------------------------------------
-
-        dense_results = self.normalize_scores(
-            dense_results
-        )
-
-        sparse_results = self.normalize_scores(
-            sparse_results
-        )
-
-
-        # ----------------------------------------------------
-        # 4. Combine Results
-        # ----------------------------------------------------
-
+        # 3. Combine results by unique key (document_name, page_number, chunk_number)
         combined = {}
 
-
-        # ----------------------------------------------------
-        # Add Dense Results
-        # ----------------------------------------------------
-
-        for result in dense_results:
-
+        for res in dense_results:
             key = (
-                result["metadata"]["page_number"],
-                result["metadata"]["chunk_number"]
+                res["metadata"].get("document_name", ""),
+                res["metadata"].get("page_number", 0),
+                res["metadata"].get("chunk_number", 0)
             )
-
             combined[key] = {
-                "text": result["text"],
-                "metadata": result["metadata"],
-                "dense_score": result["normalized_score"],
+                "text": res["text"],
+                "metadata": res["metadata"],
+                "dense_score": res["score"],  # Absolute similarity
                 "sparse_score": 0.0
             }
 
-
-        # ----------------------------------------------------
-        # Add Sparse Results
-        # ----------------------------------------------------
-
-        for result in sparse_results:
-
+        for res in sparse_results:
             key = (
-                result["metadata"]["page_number"],
-                result["metadata"]["chunk_number"]
+                res["metadata"].get("document_name", ""),
+                res["metadata"].get("page_number", 0),
+                res["metadata"].get("chunk_number", 0)
             )
-
-
-            # ------------------------------------------------
-            # New result found only by BM25
-            # ------------------------------------------------
-
             if key not in combined:
-
                 combined[key] = {
-                    "text": result["text"],
-                    "metadata": result["metadata"],
+                    "text": res["text"],
+                    "metadata": res["metadata"],
                     "dense_score": 0.0,
-                    "sparse_score": result["normalized_score"]
+                    "sparse_score": res["normalized_score"]
                 }
-
-
-            # ------------------------------------------------
-            # Result exists in both Dense + BM25
-            # ------------------------------------------------
-
             else:
-
-                combined[key]["sparse_score"] = (
-                    result["normalized_score"]
-                )
-
-                # --------------------------------------------
-                # IMPORTANT FIX
-                #
-                # Use the metadata from the current chunks.
-                # This preserves document_name.
-                # --------------------------------------------
-
+                combined[key]["sparse_score"] = res["normalized_score"]
                 combined[key]["metadata"] = {
                     **combined[key]["metadata"],
-                    **result["metadata"]
+                    **res["metadata"]
                 }
 
-
-                # --------------------------------------------
-                # Also use sparse text if available
-                # --------------------------------------------
-
-                if result.get("text"):
-
-                    combined[key]["text"] = result["text"]
-
-
-        # ----------------------------------------------------
-        # 5. Calculate Hybrid Score
-        # ----------------------------------------------------
-
+        # 4. Compute weighted hybrid score
         final_results = []
-
-
-        for result in combined.values():
-
+        for item in combined.values():
             hybrid_score = (
-                self.dense_weight
-                * result["dense_score"]
-                +
-                self.sparse_weight
-                * result["sparse_score"]
+                self.dense_weight * item["dense_score"] +
+                self.sparse_weight * item["sparse_score"]
             )
+            item["hybrid_score"] = float(hybrid_score)
+            final_results.append(item)
 
-            result["hybrid_score"] = hybrid_score
-
-            final_results.append(
-                result
-            )
-
-
-        # ----------------------------------------------------
-        # 6. Sort by Hybrid Score
-        # ----------------------------------------------------
-
-        final_results.sort(
-            key=lambda x: x["hybrid_score"],
-            reverse=True
-        )
-
-
-        # ----------------------------------------------------
-        # 7. Return Top Results
-        # ----------------------------------------------------
+        # 5. Sort descending by hybrid_score
+        final_results.sort(key=lambda x: x["hybrid_score"], reverse=True)
 
         return final_results[:n_results]
