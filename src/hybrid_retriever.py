@@ -3,6 +3,7 @@ from src.embeddings import generate_embedding
 from src.vector_store import FAISSVectorStore, get_vector_store
 from src.sparse_retriever import BM25Retriever
 from src.config import DENSE_WEIGHT, SPARSE_WEIGHT, DEFAULT_TOP_K
+from src.entity_utils import detect_entity_types, expand_query_for_bm25, has_entity_evidence
 
 
 class HybridRetriever:
@@ -78,6 +79,7 @@ class HybridRetriever:
         """
         Perform hybrid retrieval combining dense FAISS search and sparse BM25 search.
         Preserves absolute FAISS similarity semantics to enforce retrieval safety thresholds.
+        Supports query expansion and candidate re-ranking for factual/entity questions.
         """
         if not query or not query.strip():
             return []
@@ -87,9 +89,35 @@ class HybridRetriever:
 
         # 2. Sparse retrieval (BM25 normalized by max score)
         sparse_results = self.sparse_search(query, n_results=n_results)
+
+        # 3. Entity-aware query expansion for BM25
+        entity_types = detect_entity_types(query)
+        if entity_types:
+            expanded_query = expand_query_for_bm25(query, entity_types)
+            expanded_sparse = self.sparse_search(expanded_query, n_results=n_results * 2)
+
+            # Merge expanded sparse results with standard sparse results
+            sparse_map = {
+                (
+                    r["metadata"].get("document_name", ""),
+                    r["metadata"].get("page_number", 0),
+                    r["metadata"].get("chunk_number", 0)
+                ): r
+                for r in sparse_results
+            }
+            for exp_res in expanded_sparse:
+                key = (
+                    exp_res["metadata"].get("document_name", ""),
+                    exp_res["metadata"].get("page_number", 0),
+                    exp_res["metadata"].get("chunk_number", 0)
+                )
+                if key not in sparse_map or exp_res["score"] > sparse_map[key]["score"]:
+                    sparse_map[key] = exp_res
+            sparse_results = list(sparse_map.values())
+
         sparse_results = self.normalize_bm25_scores(sparse_results)
 
-        # 3. Combine results by unique key (document_name, page_number, chunk_number)
+        # 4. Combine results by unique key (document_name, page_number, chunk_number)
         combined = {}
 
         for res in dense_results:
@@ -102,7 +130,8 @@ class HybridRetriever:
                 "text": res["text"],
                 "metadata": res["metadata"],
                 "dense_score": res["score"],  # Absolute similarity
-                "sparse_score": 0.0
+                "sparse_score": 0.0,
+                "retrieval_reason": "hybrid"
             }
 
         for res in sparse_results:
@@ -116,7 +145,8 @@ class HybridRetriever:
                     "text": res["text"],
                     "metadata": res["metadata"],
                     "dense_score": 0.0,
-                    "sparse_score": res["normalized_score"]
+                    "sparse_score": res["normalized_score"],
+                    "retrieval_reason": "hybrid"
                 }
             else:
                 combined[key]["sparse_score"] = res["normalized_score"]
@@ -125,7 +155,7 @@ class HybridRetriever:
                     **res["metadata"]
                 }
 
-        # 4. Compute weighted hybrid score
+        # 5. Compute weighted hybrid score
         final_results = []
         for item in combined.values():
             hybrid_score = (
@@ -133,9 +163,16 @@ class HybridRetriever:
                 self.sparse_weight * item["sparse_score"]
             )
             item["hybrid_score"] = float(hybrid_score)
+
+            if entity_types and has_entity_evidence(item["text"], entity_types):
+                item["entity_evidence"] = True
+                item["retrieval_reason"] = "entity/keyword match"
+            else:
+                item["entity_evidence"] = False
+
             final_results.append(item)
 
-        # 5. Sort descending by hybrid_score
+        # 6. Sort descending by hybrid_score
         final_results.sort(key=lambda x: x["hybrid_score"], reverse=True)
 
         return final_results[:n_results]

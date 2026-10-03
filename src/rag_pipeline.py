@@ -5,6 +5,7 @@ from src.hybrid_retriever import HybridRetriever
 from src.llm import generate_answer
 from src.evaluator import RAGEvaluator
 from src.config import RETRIEVAL_THRESHOLD, DEFAULT_TOP_K
+from src.entity_utils import detect_entity_types, has_entity_evidence
 
 
 class RAGPipeline:
@@ -115,7 +116,7 @@ class RAGPipeline:
         Execute RAG question-answering workflow:
         1. Retrieve hybrid chunks
         2. Evaluate quality & threshold
-        3. Reject out-of-scope / low-relevance queries
+        3. Reject out-of-scope / low-relevance queries without document evidence
         4. Generate grounded LLM response
         5. Attach dynamic citations
         """
@@ -135,8 +136,18 @@ class RAGPipeline:
         evaluation = self.evaluator.evaluate(results)
         top_score = evaluation.get("top_score", 0.0)
 
-        # 3. Retrieval Safety / Threshold Check
-        if not results or top_score < threshold:
+        # 3. Retrieval Safety / Threshold Check with Entity Fallback
+        entity_types = detect_entity_types(question_clean)
+        has_valid_entity_fallback = False
+
+        if results and top_score < threshold and entity_types:
+            for res in results:
+                if res.get("entity_evidence") or has_entity_evidence(res.get("text", ""), entity_types):
+                    has_valid_entity_fallback = True
+                    res["entity_promoted"] = True
+                    break
+
+        if not results or (top_score < threshold and not has_valid_entity_fallback):
             fallback_answer = "I couldn't find sufficient information about this question in the uploaded documents."
             return {
                 "question": question_clean,

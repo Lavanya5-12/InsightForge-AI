@@ -142,11 +142,13 @@ InsightForge AI resolves these limitations through:
 - **Hybrid Score**:
   $$S_{\text{hybrid}} = 0.6 \times S_{\text{dense}} + 0.4 \times S_{\text{sparse}}$$
 
-### 3. Safety Threshold & Out-of-Scope Protection
-- Configured in `src/config.py` as `RETRIEVAL_THRESHOLD = 0.35`.
-- If $S_{\text{hybrid}} < 0.35$ for all chunks:
-  - System returns: *"I couldn't find sufficient information about this question in the uploaded documents."*
-  - Prevents hallucinated LLM responses.
+### 3. Safety Threshold, Entity Query Expansion & Out-of-Scope Protection
+- Configured in `src/config.py` as `RETRIEVAL_THRESHOLD = 0.35` (or 0.30 in active runtime).
+- **Normal Questions**: Use standard hybrid FAISS dense + BM25 sparse retrieval.
+- **Factual/Entity Questions**: (e.g. telephone number, CAS number, address, supplier, email, molecular weight): Normalizes query variants and expands BM25 search terms.
+- **Controlled Lexical Fallback**: Prevents exact fields (like `Tel: +1-215-785-3197`) from being missed due to semantic vector embedding differences. Fallback requires verified lexical/pattern evidence in document chunk text before promoting a chunk when dense score is low.
+- If no chunk has sufficient hybrid score or verified document evidence, the system returns: *"I couldn't find sufficient information about this question in the uploaded documents."*
+- Threshold safety protection remains active to prevent hallucination.
 
 ---
 

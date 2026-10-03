@@ -237,6 +237,7 @@ else:
                             dense_score = source.get("dense_score", 0.0)
                             sparse_score = source.get("sparse_score", 0.0)
                             hybrid_score = source.get("hybrid_score", 0.0)
+                            reason = source.get("retrieval_reason", "hybrid")
 
                             st.markdown(f"#### 📚 Source {i} — {doc_name} (Page {page}, Chunk {chunk_num})")
 
@@ -249,7 +250,10 @@ else:
                                 st.metric("Hybrid Score", f"{hybrid_score:.4f}")
 
                             st.progress(min(max(hybrid_score, 0.0), 1.0))
-                            st.caption(f"Hybrid Score = {int(DENSE_WEIGHT*100)}% Dense + {int(SPARSE_WEIGHT*100)}% BM25")
+                            if reason != "hybrid":
+                                st.caption(f"Mode: **{reason}** | Hybrid Score = {int(DENSE_WEIGHT*100)}% Dense + {int(SPARSE_WEIGHT*100)}% BM25")
+                            else:
+                                st.caption(f"Hybrid Score = {int(DENSE_WEIGHT*100)}% Dense + {int(SPARSE_WEIGHT*100)}% BM25")
                             st.markdown("**Content:**")
                             st.write(source.get("text", ""))
 

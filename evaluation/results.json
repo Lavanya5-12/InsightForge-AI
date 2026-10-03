@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-09-03T18:55:32.850142",
+  "timestamp": "2026-10-03T12:28:21.426161",
   "fixture_path": "data\\fixtures\\insightforge_test.pdf",
   "total_questions": 8,
   "total_chunks": 15,
@@ -56,8 +56,8 @@
         2,
         1,
         8,
-        14,
-        11
+        11,
+        14
       ],
       "source_count": 5,
       "relevant_sources": 1,
@@ -130,10 +130,10 @@
       ],
       "retrieved_pages": [
         11,
+        1,
         2,
         8,
-        14,
-        1
+        14
       ],
       "source_count": 5,
       "relevant_sources": 1,
